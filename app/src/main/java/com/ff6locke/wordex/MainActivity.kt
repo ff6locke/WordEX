@@ -89,7 +89,7 @@ private fun WordExApp(
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching { content.text = openText(uri); title = uri.lastPathSegment?.substringAfterLast('/') ?: "Document" }
+            runCatching { content = TextFieldValue(openText(uri)); title = uri.lastPathSegment?.substringAfterLast('/') ?: "Document" }
                 .onFailure { message = "Unable to open this file" }
         }
     }
