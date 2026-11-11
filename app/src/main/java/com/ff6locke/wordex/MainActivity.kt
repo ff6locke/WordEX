@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             WordExApp(
+                initialDocument = intent?.data,
                 getDisplayName = { uri -> queryDisplayName(uri) },
                 openText = { uri, name -> readDocument(uri, name) },
                 saveText = { uri, text, format -> writeDocument(uri, text, format) },
@@ -195,7 +196,8 @@ private fun WordExApp(
     getDisplayName: (Uri) -> String,
     openText: (Uri, String) -> String,
     saveText: (Uri, String, DocumentFormat) -> Unit,
-    exportPdf: (Uri, String) -> Unit
+    exportPdf: (Uri, String) -> Unit,
+    initialDocument: Uri? = null
 ) {
     var title by remember { mutableStateOf("Untitled document") }
     var content by remember { mutableStateOf(TextFieldValue("")) }
@@ -210,6 +212,17 @@ private fun WordExApp(
 
     LaunchedEffect(message) {
         message?.let { snackbarHostState.showSnackbar(it); message = null }
+    }
+
+    LaunchedEffect(initialDocument) {
+        initialDocument?.let { uri ->
+            runCatching {
+                val name = getDisplayName(uri)
+                content = TextFieldValue(openText(uri, name))
+                title = name
+                message = "Opened $name"
+            }.onFailure { message = it.message ?: "Unable to open this file" }
+        }
     }
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
