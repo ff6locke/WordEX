@@ -21,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
@@ -208,6 +210,10 @@ private fun WordExApp(
     var message by remember { mutableStateOf<String?>(null) }
     var selectedFormat by remember { mutableStateOf(DocumentFormat.DOCX) }
     var formatMenu by remember { mutableStateOf(false) }
+    var findDialog by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
+    var replaceText by remember { mutableStateOf("") }
+    val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(message) {
@@ -243,6 +249,55 @@ private fun WordExApp(
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) runCatching { exportPdf(uri, content.text); message = "PDF exported" }
             .onFailure { message = "PDF export failed" }
+    }
+
+
+    if (findDialog) {
+        AlertDialog(
+            onDismissRequest = { findDialog = false },
+            title = { Text("Search & Replace") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = searchText, onValueChange = { searchText = it }, label = { Text("Find text") }, singleLine = true)
+                    OutlinedTextField(value = replaceText, onValueChange = { replaceText = it }, label = { Text("Replace with") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        if (searchText.isNotEmpty()) {
+                            val startAt = content.selection.end.coerceIn(0, content.text.length)
+                            val found = content.text.indexOf(searchText, startAt, ignoreCase = true)
+                                .takeIf { it >= 0 } ?: content.text.indexOf(searchText, 0, ignoreCase = true)
+                            if (found >= 0) content = content.copy(selection = androidx.compose.ui.text.TextRange(found, found + searchText.length))
+                            else message = "No match found"
+                        }
+                    }) { Text("Find next") }
+                    TextButton(onClick = {
+                        if (searchText.isNotEmpty()) {
+                            val start = content.selection.min
+                            val end = content.selection.max
+                            if (start != end && content.text.substring(start, end).equals(searchText, ignoreCase = true)) {
+                                content = content.copy(text = content.text.replaceRange(start, end, replaceText), selection = androidx.compose.ui.text.TextRange(start + replaceText.length))
+                            } else {
+                                val found = content.text.indexOf(searchText, content.selection.end.coerceIn(0, content.text.length), ignoreCase = true)
+                                if (found >= 0) content = content.copy(selection = androidx.compose.ui.text.TextRange(found, found + searchText.length))
+                                else message = "No match found"
+                            }
+                        }
+                    }) { Text("Replace") }
+                    TextButton(onClick = {
+                        if (searchText.isNotEmpty()) {
+                            val replaced = content.text.replace(searchText, replaceText, ignoreCase = true)
+                            val count = (content.text.length - replaced.length) / (searchText.length - replaceText.length).coerceAtLeast(1)
+                            content = TextFieldValue(replaced)
+                            message = "Replaced all matches"
+                        }
+                    }) { Text("Replace all") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { findDialog = false }) { Text("Close") } }
+        )
     }
 
     MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
@@ -302,6 +357,21 @@ private fun WordExApp(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    IconButton(onClick = { findDialog = true }) { Icon(Icons.Default.Search, "Find and replace") }
+                    IconButton(onClick = {
+                        clipboard.setText(AnnotatedString(content.text))
+                        message = "Copied all text"
+                    }) { Icon(Icons.Default.ContentCopy, "Copy all") }
+                    IconButton(onClick = {
+                        val clip = clipboard.getText()?.text.orEmpty()
+                        if (clip.isNotEmpty()) {
+                            val start = content.selection.min
+                            val end = content.selection.max
+                            val newText = content.text.replaceRange(start, end, clip)
+                            content = TextFieldValue(newText, selection = androidx.compose.ui.text.TextRange(start + clip.length))
+                            message = "Pasted"
+                        } else message = "Clipboard is empty"
+                    }) { Icon(Icons.Default.ContentPaste, "Paste") }
                     IconButton(onClick = { bold = !bold }) {
                         Icon(Icons.Default.FormatBold, "Bold", tint = if (bold) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
